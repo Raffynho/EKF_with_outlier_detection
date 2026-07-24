@@ -37,13 +37,13 @@ Nel campo della robotica mobile, in particolare per quanto riguarda i veicoli au
 Questi due processi sono, essenzialmente, l'uno l'opposto dell'altro.
 Tuttavia, negli scenari reali, un robot si trova spesso in un ambiente completamente sconosciuto, senza avere a disposizione né una mappa preesistente né una stima esatta della propria posizione. È in questa situazione che entra in gioco un terzo e più complesso problema, che consiste nell'unione dei due precedenti, lo *SLAM* (Simultaneous Localization and Mapping).
 
-# SLAM
+## SLAM
 
 Lo SLAM è il processo computazionale che permette a un veicolo o a un robot di costruire una mappa di un ambiente sconosciuto mentre, contemporaneamente, calcola la propria posizione all'interno di quella stessa mappa in fase di costruzione.
 
 Questo problema viene spesso descritto come un paradosso, per costruire una mappa precisa è necessario conoscere l'esatta posizione del veicolo, ma per stimare l'esatta posizione del veicolo serve avere una mappa di riferimento. 
 
-Lo SLAM risolve questo paradosso fondendo in tempo reale i dati provenienti da vari sensori (come telecamere, LiDAR, radar e odometria) attraverso algoritmi probabilistici (come i Filtri di Kalman o i Particle Filter). 
+Lo SLAM risolve questo paradosso fondendo in tempo reale i dati provenienti da vari sensori (come telecamere, LiDAR, radar e odometria) attraverso algoritmi probabilistici, come i Filtri di Kalman. 
 In questo modo, ogni volta che il veicolo acquisisce nuove informazioni sull'ambiente, il sistema aggiorna simultaneamente sia la geometria della mappa sia la stima della posizione del veicolo al suo interno.
 
 
@@ -57,17 +57,17 @@ Il funzionamento del filtro si basa su un ciclo continuo diviso in due fasi prin
 
 - *Aggiornamento*, il filtro confronta il dato reale con quello ottenuto dalla previsione. Attraverso un coefficiente matematico chiamato Guadagno di Kalman, il filtro stabilisce quanta fiducia dare alla predizione teorica e quanta alla misurazione reale, combinandole per ottenere la stima finale.
 
-Il Filtro di Kalman standard presuppone però un vincolo matematico molto rigido: il sistema deve essere lineare e il rumore deve seguire una distribuzione gaussiana.
+Il Filtro di Kalman standard presuppone però che il sistema sia lineare e che sia effetto da rumore gaussiano.
+Tuttavia, la maggior parte dei sistemi robotici sono non lineari e quindi non possono essere trattati dal filtro di Kalman standard.
+Per affrontare questa limitazione bisogna quindi utilizzare una variante del filtro chiamata *Filtro di Kalman Esteso* (EKF), che permette di gestire sistemi non lineari linearizzando le equazioni attorno alla stima corrente dello stato.
 
 ## Filtro di Kalman esteso
 
-Nella robotica reale, la cinematica dei veicoli (come un uniciclo) e i modelli dei sensori sono governati da leggi fortemente non lineari. Per questo è stata sviluppata una variante del filtro chiamata *EKF* (Extended Kalman Filter), che permette di propagare le covarianze e calcolare il guadagno utilizzando modelli linearizzati.
+Nella robotica modelli cinematici, come quello dell'uniciclo, sono governati da leggi fortemente non lineari. Per questo è stata sviluppata una variante del filtro chiamata *EKF* (Extended Kalman Filter), che permette di propagare le covarianze e calcolare il guadagno utilizzando modelli linearizzati.
 
 L'idea fondamentale alla base dell'EKF è l'uso dell'espansione in Serie di Taylor di primo ordine calcolata attorno alla stima corrente dello stato. In pratica, l'algoritmo calcola le derivate parziali delle funzioni non lineari rispetto alle variabili di stato e di rumore. Le matrici che contengono queste derivate parziali prendono il nome di Matrici Jacobiane.
 
-Il ciclo dell'EKF segue questa struttura matematica rigorosa:
-
-Come detto per il *Filtro di Kalman Classico* anche l'EKF segue la stessa struttura base:
+L'EKF segue la stessa struttura base del filtro di Kalman standard:
 
 **Fase di Predizione**
 Lo stato futuro del robot viene predetto usando le equazioni non lineari del moto ($f_k$), mentre l'incertezza viene propagata usando le Jacobiane del modello cinematico rispetto allo stato ($A$) e rispetto al rumore di processo ($G$).
@@ -102,6 +102,7 @@ Il modello dell'uniciclo rappresenta un veicolo che si muove su un piano bidimen
 $$
 S = \begin{bmatrix} x \\ y \\ v \\ \theta \end{bmatrix}
 $$
+
 dove $x(t)$ e $y(t)$ sono le coordinate cartesiane del centro di istantanea rotazione del robot rispetto a un sistema di riferimento globale fisso, $v(t)$ è la velocità lineare di avanzamento e $\theta(t)$ è l'angolo di imbardata (heading), ovvero l'orientamento del veicolo rispetto all'asse $x$ globale.
 
 Gli ingressi di controllo (ovvero le forze motrici virtuali) del sistema sono descritti dal vettore:
@@ -140,7 +141,7 @@ questa coppia rappresenta una configurazione molto comune essendo che solitament
 
 ## IMU Planare
 
-L'IMU è un sensore propriocettivo che misura accellerazioni, nel caso della versioni planare le misurazioni ottenute sono:
+L'IMU è un sensore propriocettivo che misura accellerazioni lungo gli assi cardinali, nel caso della versioni planare le misurazioni ottenute sono:
 
 - Accelerazione lineare lungo l'asse $x$ del robot ($a_x$).
 - Accelerazione lineare lungo l'asse $y$ del robot ($a_y$).
@@ -151,7 +152,7 @@ L'IMU è un sensore propriocettivo che misura accellerazioni, nel caso della ver
 I sensori reali sono affetti da imperfezioni, quindi nella classe `IMU` della simulazione al segnale generato dal calcolo della cinematica dell'uniciclo vengono aggiunti due tipi di disturbo:
 
 - **Rumore Gaussiano** fluttuazioni casuali a media nulla aggiunte a ogni singola lettura
-- **Bias** un errore sistematico a lenta variazione temporale. Nel codice, il bias è modellato come un *Random Walk*, ovvero il bias attuale è uguale al bias precedente più un piccolo rumore gaussiano. 
+- **Bias** un errore sistematico a lenta variazione temporale. Nel codice, il bias è modellato come un *Random Walk*, ovvero il bias attuale è uguale al bias precedente piu un piccolo rumore gaussiano. 
 
 ```{python}
 # Update bias random walk
@@ -175,14 +176,12 @@ Quindi per il caso della *IMU*:
 $$
 x(t) = x_0 + v_0 t + \frac{1}{2} a_m t^2 = x_0 + v_0 t + \frac{1}{2} a t^2 + \frac{1}{2} \epsilon t^2
 $$
-
 $$
 \begin{align}
 E(x(t)) &= E(\bar{x}(t) + \frac{1}{2} \epsilon t^2) = E(\bar{x}(t)) + E(\frac{1}{2} t^2 E(\epsilon)) \\
 &= \bar{x}(t) + \frac{1}{2} t^2 E(\epsilon)
 \end{align}
 $$
-
 $$
 \begin{align}
 E((x(t) - \bar{x}(t))^2) &= E((\frac{1}{2} \epsilon t^2)^2) = \frac{1}{4} t^4 E(\epsilon^2) \\
@@ -190,21 +189,20 @@ E((x(t) - \bar{x}(t))^2) &= E((\frac{1}{2} \epsilon t^2)^2) = \frac{1}{4} t^4 E(
                         &= \frac{1}{4} t^4 \sigma^2
 \end{align}
 $$
-
 $$
 \text{Sd} \rightarrow \sigma_x = \frac{t^2}{2} \sigma
 $$
 
 Quindi possiamo vedere chiaramente che la deviazione standard (*sd*) del sensore dipende direttamente dal tempo.
+Proprio per questo motivo non vengono usati solo sensori propriocettivi ma l'aggiunta di sensori esterocettivo permettono di ottenere un riferimento con l'ambiente esterno.
 
-## Telecamera (Modello Pinhole)
-
-La telecamera funge da sensore esterocettivo per riconoscere elementi dell'ambiente (i *landmark*) la cui posizione nel frame world <$w$> e' conosciuta.
+## Camera
+La *Camera* all'interno della simulazione viene semplificata usando il modello *pin-hole*; questa riconosce punti di riferimento posizionati all'interno dell'ambiente, chiamati *landmark*, la cui posizione nel frame world $<w>$ e' conosciuta a priori. 
 
 ### Funzionamento e Vincoli Visivi
-La classe `Camera` in `unicycle_estimation.py` simula un modello ottico di tipo *pinhole* (foro stenopeico) monodimensionale. Il sensore non vede in tutte le direzioni in modo illimitato, ma è vincolato da:
-- **Field of View (FOV):** un angolo visivo limitato (impostato a 45 gradi).
-- **Range:** una distanza minima (`min_range = 1.0`) e massima (`max_range = 10.0`).
+La telecamera viene limitata in quello che vede secondo due caratteristiche che sono le seguenti:
+- **Field of View (FOV):** un angolo visivo limitato
+- **Range:** range di distanza per la quale la telecamera riesce a vedere i landmark
 Il metodo `check_fov()` si assicura che solo i landmark che rientrano in queste limitazioni geometriche generino una misurazione valida.
 
 ### Proiezione e Utilizzo nell'EKF (Fase di Aggiornamento)
@@ -234,7 +232,6 @@ $$
 D^2 = (z - \mu)^T \Sigma^{-1} (z - \mu)
 $$
 
-
 Da queste equazioni si evince il comportamento "adattivo" del filtro:
 - Se l'incertezza $\Sigma$ è piccola (matrice "stretta"), anche un piccolo scostamento $(z - \mu)$ genererà un $D^2$ molto grande, rendendo il filtro severo.
 - Se l'incertezza $\Sigma$ è grande, il termine $\Sigma^{-1}$ "ammorbidisce" l'impatto dell'errore, rendendo il filtro più tollerante.
@@ -251,23 +248,28 @@ Il processo decisionale è quindi un semplice test d'ipotesi:
 
 ## Nella IMU
 
+Nel caso della IMU, il filtro degli outlier mantiene una finestra mobile di misurazioni recenti. Per ogni nuova lettura, calcola la media e la covarianza della finestra, e poi valuta la distanza di Mahalanobis della nuova misura rispetto a questa distribuzione.
+
+
 ```{python}
+# Calcolo della statistica sulla finestra mobile
+history_array = np.array(self.history)
 mu = np.mean(history_array, axis=0)  
 Sigma = np.cov(history_array, rowvar=False)
 
+# Calcolo della distanza di Mahalanobis
 diff = z - mu
 mahalanobis_sq = diff.T @ np.linalg.inv(Sigma) @ diff
 
 if mahalanobis_sq > self.chi2_threshold:
-  # DATO INVALIDO
+  # Dato invalido
   self.outlier_detected = True
   print(f"[Outlier Rejector] Spike rilevato! D^2: {mahalanobis_sq:.2f} > Soglia: {self.chi2_threshold:.2f}")
 
-  # Ritorna la media storica per ignorare il singolo spike
-  return mu
+  return mu.reshape((3,1))
     
 else:
-  # DATO VALIDO
+  # Dato valido
   self.outlier_detected = False
   self.history.pop(0)
   self.history.append(z)
@@ -276,6 +278,36 @@ else:
 
 ## Nella Camera
 
-```{python}
+La classe esegue un'operazione di "anticipazione" delle formule dell'EKF:
 
+1.*Predizione dello Stato e della Covarianza*, calcola in anticipo lo stato predetto (pred_state) e la propagazione della covarianza dell'errore (pred_P).  
+2. *Calcolo della Covarianza dell'Innovazione* ($S$), utilizzando il modello di misura non lineare $h(x)$ e la sua Matrice Jacobiana $H$ calcolata nel punto di predizione, il filtro proietta l'incertezza dello stato nello spazio dei pixel e le somma il rumore intrinseco del sensore $R$. La formula applicata è esattamente: $S = H P^- H^T + R$.  
+3. *Rejection*, poiché stiamo valutando l'errore in pixel su una singola dimensione ottica. La distanza di Mahalanobis diventa un semplice rapporto scalare: $D^2 = \frac{(z - \hat{z})^2}{S}$. Se questo scostamento è ritenuto statisticamente improbabile (supera la soglia $\chi^2$), la misurazione del landmark viene scartata prima che possa corrompere la stima dello stato dell'EKF.
+
+```{python}
+# Anticipazione della fase di predizione dell'EKF
+pred_state = ekf.state + ekf.d_state * delta_t
+pred_state[4, 0] = (pred_state[4, 0] + np.pi) % (2 * np.pi) - np.pi
+pred_P = ekf.P + ekf.P_dot * delta_t
+
+for lm, z_true in zip(camera_measurements['landmarks'], camera_measurements['pixels']):
+    
+    # Misurazione attesa e Jacobiano (H) proiettati dal modello interno dell'EKF
+    z_pred, H_i = ekf.measurement_model(pred_state, lm)
+    
+    # Covarianza dell'innovazione (S) incertezza dello stato + rumore del sensore
+    S_i = H_i @ pred_P @ H_i.T + ekf.R
+    S_i_scalar = float(np.squeeze(S_i))
+    
+    # Calcolo della Distanza di Mahalanobis scalare 
+    diff = float(z_true - z_pred)
+    mahalanobis_sq = (diff ** 2) / S_i_scalar
+    
+    # Decisione basata sul Chi-Quadro
+    if mahalanobis_sq <= self.chi2_threshold:
+        filtered_landmarks.append(lm)
+        filtered_pixels.append(z_true)
+    else:
+        self.outliers_rejected_count += 1
+        # Il dato viene ignorato e non inviato alla fase di aggiornamento dell'EKF
 ```
