@@ -264,7 +264,7 @@ mahalanobis_sq = diff.T @ np.linalg.inv(Sigma) @ diff
 if mahalanobis_sq > self.chi2_threshold:
   # Dato invalido
   self.outlier_detected = True
-  print(f"[Outlier Rejector] Spike rilevato! D^2: {mahalanobis_sq:.2f} > Soglia: {self.chi2_threshold:.2f}")
+  print(f"[Outlier Rejector] Outlier rilevato! D^2: {mahalanobis_sq:.2f} > Soglia: {self.chi2_threshold:.2f}")
 
   return mu.reshape((3,1))
     
@@ -278,11 +278,24 @@ else:
 
 ## Nella Camera
 
-La classe esegue un'operazione di "anticipazione" delle formule dell'EKF:
+A differenza dell'IMU, che basa il filtraggio su una statistica ricavata da una finestra temporale di misurazioni passate, il rigetto degli outlier per la telecamera utilizza un approccio molto più robusto e reattivo basato direttamente sull'architettura predittiva del Filtro di Kalman Esteso. Questo metodo valuta l'errore non in modo assoluto, ma pesandolo rispetto all'incertezza stimata dal filtro in quel preciso istante.
 
-1.*Predizione dello Stato e della Covarianza*, calcola in anticipo lo stato predetto (pred_state) e la propagazione della covarianza dell'errore (pred_P).  
-2. *Calcolo della Covarianza dell'Innovazione* ($S$), utilizzando il modello di misura non lineare $h(x)$ e la sua Matrice Jacobiana $H$ calcolata nel punto di predizione, il filtro proietta l'incertezza dello stato nello spazio dei pixel e le somma il rumore intrinseco del sensore $R$. La formula applicata è esattamente: $S = H P^- H^T + R$.  
-3. *Rejection*, poiché stiamo valutando l'errore in pixel su una singola dimensione ottica. La distanza di Mahalanobis diventa un semplice rapporto scalare: $D^2 = \frac{(z - \hat{z})^2}{S}$. Se questo scostamento è ritenuto statisticamente improbabile (supera la soglia $\chi^2$), la misurazione del landmark viene scartata prima che possa corrompere la stima dello stato dell'EKF.
+Il concetto matematico chiave in questa fase è l'**Innovazione** (o residuo), definita come la differenza tra la misurazione reale $z$ ottenuta dal sensore e la misurazione attesa $\hat{z}$. Quest'ultima viene calcolata proiettando lo stato predetto del robot nel dominio ottico del sensore tramite il modello di misura $h(x)$.
+
+Per implementare questo controllo in modo sicuro, la classe esegue un'operazione di "anticipazione" delle formule dell'EKF prima di procedere al vero aggiornamento dello stato:
+
+1. **Predizione dello Stato e della Covarianza:** L'algoritmo calcola in anticipo lo stato predetto a priori $\hat{x}^-$ e propaga la matrice di covarianza dell'errore $P^-$.
+2. **Calcolo della Covarianza dell'Innovazione ($S$):** Non ha senso valutare l'errore $(z - \hat{z})$ senza conoscere l'incertezza associata a quella previsione. Utilizzando la Matrice Jacobiana $H$ (calcolata nel punto di predizione), il filtro proietta l'incertezza dello stato nello spazio delle misurazioni (i pixel) e le somma il rumore intrinseco del sensore $R$. La formula applicata è:
+$$
+S = H P^- H^T + R
+$$
+[cite_start]Questa matrice $S$ rappresenta, in termini statistici, la covarianza dei residui[cite: 355, 404], ovvero quanto "siamo insicuri" riguardo alla misurazione che stiamo per ricevere.
+3. **Calcolo della Distanza e Reiezione:** Avendo a disposizione l'innovazione e la sua incertezza $S$, si calcola la Distanza di Mahalanobis. Poiché nel nostro simulatore la telecamera semplificata rileva la posizione del landmark come coordinata pixel lungo una singola dimensione ottica, i gradi di libertà del test sono pari a 1. Di conseguenza, la matrice $S$ è uno scalare e la distanza di Mahalanobis collassa in un semplice rapporto quadratico:
+$$
+D^2 = \frac{(z - \hat{z})^2}{S}
+$$
+Se questo scostamento supera la soglia statistica dettata dalla distribuzione $\chi^2$, la misurazione del landmark è considerata fisicamente implausibile (ad esempio un riflesso o un falso rilevamento visivo). Il dato viene quindi classificato come outlier e scartato *prima* che il suo valore possa corrompere le matrici di stima dell'EKF.
+
 
 ```{python}
 # Anticipazione della fase di predizione dell'EKF
@@ -299,15 +312,15 @@ for lm, z_true in zip(camera_measurements['landmarks'], camera_measurements['pix
     S_i = H_i @ pred_P @ H_i.T + ekf.R
     S_i_scalar = float(np.squeeze(S_i))
     
-    # Calcolo della Distanza di Mahalanobis scalare 
+    # Calcolo della Distanza di Mahalanobis 
     diff = float(z_true - z_pred)
     mahalanobis_sq = (diff ** 2) / S_i_scalar
     
-    # Decisione basata sul Chi-Quadro
+    # Confronto con la soglia del Chi-Quadro
     if mahalanobis_sq <= self.chi2_threshold:
         filtered_landmarks.append(lm)
         filtered_pixels.append(z_true)
     else:
-        self.outliers_rejected_count += 1
         # Il dato viene ignorato e non inviato alla fase di aggiornamento dell'EKF
+        self.outliers_rejected_count += 1
 ```
