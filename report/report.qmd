@@ -9,12 +9,12 @@ format:
     fig-width: 8
     fig-height: 6
     fig-format: pdf
+    code-overflow: wrap
 
 jupyter: python3
 execute: 
   eval: false
   warning: false
-code-fold: true
 
 toc: true
 number-sections: true
@@ -23,6 +23,7 @@ number-depth: 2
 
 syntax-highlighting: github
 code-block-border-left: true
+
 ---
 
 {{< pagebreak >}}
@@ -35,7 +36,7 @@ Nel campo della robotica mobile, in particolare per quanto riguarda i veicoli au
 
 - *Mappatura*, la posizione del veicolo è nota a priori e l'obiettivo è esplorare l'ambiente per ricostruire una mappa accurata a partire dai dati dei sensori.
 
-Questi due processi sono, essenzialmente, l'uno l'opposto dell'altro.
+Questi due problemi sono, essenzialmente, l'uno l'opposto dell'altro.
 Tuttavia, negli scenari reali, un robot si trova spesso in un ambiente completamente sconosciuto, senza avere a disposizione né una mappa preesistente né una stima esatta della propria posizione. È in questa situazione che entra in gioco un terzo e più complesso problema, che consiste nell'unione dei due precedenti, lo *SLAM* (Simultaneous Localization and Mapping).
 
 ## SLAM
@@ -56,15 +57,15 @@ Il funzionamento del filtro si basa su un ciclo continuo diviso in due fasi prin
 
 - *Predizione*, utilizzando un modello matematico del movimento, il filtro *predice* lo stato successivo del robot e calcola il livello di incertezza di questa previsione.
 
-- *Aggiornamento*, il filtro confronta il dato reale con quello ottenuto dalla previsione. Attraverso un coefficiente matematico chiamato Guadagno di Kalman, il filtro stabilisce quanta fiducia dare alla predizione teorica e quanta alla misurazione reale, combinandole per ottenere la stima finale.
+- *Aggiornamento*, il filtro confronta il dato reale con quello ottenuto dalla previsione. Attraverso un coefficiente chiamato *Guadagno di Kalman* il filtro stabilisce quanta fiducia dare alla predizione teorica e quanta alla misurazione reale, combinandole per ottenere la stima finale.
 
 Il Filtro di Kalman standard presuppone però che il sistema sia lineare e che sia effetto da rumore gaussiano.
 Tuttavia, la maggior parte dei sistemi robotici sono non lineari e quindi non possono essere trattati dal filtro di Kalman standard.
-Per affrontare questa limitazione bisogna quindi utilizzare una variante del filtro chiamata *Filtro di Kalman Esteso* (EKF), che permette di gestire sistemi non lineari linearizzando le equazioni attorno alla stima corrente dello stato.
+Per superare questa limitazione bisogna quindi utilizzare una variante del filtro chiamata *Filtro di Kalman Esteso (EKF)*, che permette di gestire sistemi non lineari linearizzando le equazioni attorno alla stima corrente dello stato.
 
 ## Filtro di Kalman esteso
 
-Nella robotica modelli cinematici, come quello dell'uniciclo, sono governati da leggi fortemente non lineari. Per questo è stata sviluppata una variante del filtro chiamata *EKF* (Extended Kalman Filter), che permette di propagare le covarianze e calcolare il guadagno utilizzando modelli linearizzati.
+Nella robotica i modelli cinematici, come quello dell'uniciclo, sono governati da leggi fortemente non lineari. Per questo è stata sviluppata una variante del filtro chiamata *EKF* (Extended Kalman Filter), che permette di propagare le covarianze e calcolare il guadagno utilizzando modelli linearizzati.
 
 L'idea fondamentale alla base dell'EKF è l'uso dell'espansione in Serie di Taylor di primo ordine calcolata attorno alla stima corrente dello stato. In pratica, l'algoritmo calcola le derivate parziali delle funzioni non lineari rispetto alle variabili di stato e di rumore. Le matrici che contengono queste derivate parziali prendono il nome di Matrici Jacobiane.
 
@@ -92,45 +93,39 @@ P(k+1) = (I - W(k+1)H(k+1))P(k+1)^-
 \end{cases}
 $$
 
-## Modello Cinematico dell’Uniciclo
+## Cinematica dell'Uniciclo: Stato e Controllo
 
-Il veicolo che viene usato per la simulazione segue il modello cinematico dell'*uniciclo* che rappresenta un classico esempio di un sistema robotico non lineare e non olonomo.
+Il modello cinematico del veicolo di tipo uniciclo è fondamentale per lo sviluppo dell'algoritmo di SLAM. Di seguito vengono definiti lo stato, i vincoli e le equazioni di controllo che descrivono il movimento del robot.
 
-### Definizione dello stato
-
-Il modello dell'uniciclo rappresenta un veicolo che si muove su un piano bidimensionale (2D). Lo stato cinematico completo del sistema in un generico istante di tempo continuo t è descritto da un vettore di stato a 4 dimensioni:
-
+### Stato del robot
+Lo stato del veicolo sul piano bidimensionale è descritto dal vettore delle coordinate generalizzate $q$:
 $$
-S = \begin{bmatrix} x \\ y \\ v \\ \theta \end{bmatrix}
+q = \begin{bmatrix} x \\ y \\ \theta \end{bmatrix}
 $$
+dove le coordinate $(x, y)$ rappresentano la posizione del punto medio dell'asse delle ruote di trazione, e l'angolo $\theta$ rappresenta l'orientamento (heading) del veicolo rispetto all'asse X orizzontale del sistema di riferimento globale.
 
-dove $x(t)$ e $y(t)$ sono le coordinate cartesiane del centro di istantanea rotazione del robot rispetto a un sistema di riferimento globale fisso, $v(t)$ è la velocità lineare di avanzamento e $\theta(t)$ è l'angolo di imbardata (heading), ovvero l'orientamento del veicolo rispetto all'asse $x$ globale.
-
-Gli ingressi di controllo (ovvero le forze motrici virtuali) del sistema sono descritti dal vettore:
-
+### Vincolo Cinematico
+Il veicolo è soggetto a un vincolo cinematico non olonomo, il quale impone che l'uniciclo non possa traslare lateralmente lungo la direzione dell'asse delle ruote, quindi la velocità perpendicolare all'orientamento del veicolo deve essere nulla:
 $$
-u(t) = \begin{bmatrix} a(t) \\ \omega (t) \end{bmatrix}
+\dot{x} \sin(\theta) - \dot{y} \cos(\theta) = 0
 $$
 
-dove $a(t)$ è l'accelerazione lineare e $\omega (t)$ la velocità angolare.
+### Equazioni di Stato e di Controllo
+Esprimendo il vincolo nella forma pfaffiana e calcolandone lo spazio nullo per trovare le direzioni di movimento consentite, il modello cinematico vincolato assume la forma $\dot{q} = G(q)u$. 
 
-### Modello cinematico
-
-Sfruttando il vincolo appena descritto, possiamo scomporre la velocità lineare $v(t)$ sugli assi cartesiani globali. Questo ci permette di scrivere il sistema di Equazioni Differenziali Ordinarie (ODE) che governa l'evoluzione analitica del sistema nel tempo:
-
+Il vettore degli ingressi di controllo è definito come $u = [u_1, u_2]^T$, dove $u_1$ rappresenta la velocità di avanzamento lineare e $u_2$ rappresenta la velocità angolare di sterzata. Le equazioni di stato che descrivono l'evoluzione delle coordinate nel tempo diventano quindi:
 $$
-\dot{x}(t) = f(x(t), u(t)) \rightarrow
-\begin{cases}
-\dot{x} = v \cos(\theta) \\
-\dot{y} = v \sin(\theta) \\
-\dot{v} = a \\
-\dot{\theta} = \omega
-\end{cases}
+\begin{bmatrix} \dot{x} \\ \dot{y} \\ \dot{\theta} \end{bmatrix} = \begin{bmatrix} \cos(\theta) & 0 \\ \sin(\theta) & 0 \\ 0 & 1 \end{bmatrix} 
+\begin{bmatrix} u_1 \\ u_2 \end{bmatrix}
 $$
 
-Da questo sistema si riesce chiaramente a vedere la componente non lineare ed questa e' il motivo per cui non si puo' usare il *Filtro di Kalman Standard* ma invece bisogna usare la versione estesa del filtro il quale sfrutta le serie di Taylor per lineare queste funzioni.
+Il modello esplicito risulta essere:
 
+- $\dot{x} = u_1 \cos(\theta)$
+- $\dot{y} = u_1 \sin(\theta)$
+- $\dot{\theta} = u_2$
 
+In fase di implementazione pratica, come nel caso di un robot a guida differenziale, questi ingressi di controllo sono legati alle velocità di rotazione della ruota destra ($\omega_r$) e sinistra ($\omega_l$) attraverso le relazioni $u_1 = \frac{r}{2}(\omega_r + \omega_l)$ e $u_2 = \frac{r}{L}(\omega_r - \omega_l)$, con $r$ raggio e $L$ la lunghezza di inteasse delle ruote.
 
 
 # Modelli dei Sensori
@@ -140,7 +135,7 @@ Nel simulatore, l'uniciclo e' equipaggiato con due sensori:
 - *IMU* 
 - *Telecamera*
 
-questa coppia rappresenta una configurazione molto comune essendo che solitamente si tende ad accoppiare sensori propriocettivi con sensori esterocettivi per ragioni che verranno trattate in seguito.
+questa coppia rappresenta una configurazione molto comune poiche' solitamente si tende ad accoppiare sensori propriocettivi con sensori esterocettivi per ragioni che verranno trattate in seguito.
 
 ## IMU Planare
 
@@ -215,7 +210,7 @@ Il metodo `check_fov()` si assicura che solo i landmark che rientrano in queste 
 Quando un landmark è visibile, la sua posizione reale nel mondo ($l_w$) viene trasformata nelle coordinate locali del robot (Body frame, $l_b$) tramite la matrice di rotazione inversa $R_{BW}$. 
 Successivamente, per simulare la formazione dell'immagine sul sensore ottico, le coordinate vengono normalizzate rispetto alla profondità $x$ (coordinate omogenee) e moltiplicate per i parametri intrinseci della telecamera, ottenendo una coordinata in pixel $u$ affetta da rumore gaussiano.
 
-Nel file `kalman_filter.py`, la fase di *Aggiornamento* utilizza queste letture in pixel per correggere lo stato. Il metodo `measurement_model()` replica esattamente la matematica della proiezione ottica per calcolare la misura attesa $\hat{z}$. Nello stesso momento, la funzione `measurement_jacobian()` calcola la matrice $H$, applicando la regola della catena delle derivate (Chain Rule):
+Nel file `kalman_filter.py`, la fase di *Aggiornamento* utilizza queste letture in pixel per correggere lo stato. Il metodo `measurement_model()` replica esattamente il calcolo della proiezione ottica per calcolare la misura attesa $\hat{z}$. Nello stesso momento, la funzione `measurement_jacobian()` calcola la matrice $H$, applicando la regola della catena delle derivate:
 
 $$
 H = \frac{\partial u}{\partial \tilde{l}_b} \cdot \frac{\partial \tilde{l}_b}{\partial l_b} \cdot \frac{\partial l_b}{\partial x}
@@ -230,7 +225,7 @@ Per questo e' fondamentale inserire dopo le misure ottenute un qualche tipo di f
 
 ## La Distanza di Mahalanobis
 
-Per risolvere il problema appena citato, il filtro degli outlier si basa sulla *Distanza di Mahalanobis*.
+Per risolvere il problema sopra citato, il filtro degli outlier si basa sulla *Distanza di Mahalanobis*.
 
 Data una misurazione $z$, un valore medio atteso $\mu$ e una matrice di covarianza $\Sigma$ che descrive l'incertezza, la distanza di Mahalanobis al quadrato $D^2$ è definita come:
 
@@ -244,7 +239,7 @@ Da queste equazioni si evince il comportamento del filtro:
 
 ## Il Test del Chi-Quadro ($\chi^2$)
 
-Sotto l'assunzione che il rumore del sistema sia bianvo, la variabile statistica $D^2$ segue una distribuzione del *Chi-Quadro* ($\chi^2$) con un numero di gradi di libertà pari alla dimensionalità della misurazione.
+Sotto l'assunzione che il rumore del sistema sia bianco, la variabile statistica $D^2$ segue una distribuzione del *Chi-Quadro* ($\chi^2$) con un numero di gradi di libertà pari alla dimensionalità della misurazione.
 
 Il filtro degli outlier funziona impostando un *livello di confidenza* (es. 95% o 99%). Tramite le tabelle statistiche della distribuzione $\chi^2$, si ricava un valore di soglia. 
 Il processo decisionale è quindi un semplice test d'ipotesi:
@@ -286,7 +281,7 @@ else:
 
 A differenza dell'IMU, che basa il filtraggio su una statistica ricavata da una finestra temporale di misurazioni passate, il rigetto degli outlier per la telecamera utilizza un approccio molto più robusto e reattivo basato direttamente sull'architettura predittiva del Filtro di Kalman Esteso. Questo metodo valuta l'errore non in modo assoluto, ma pesandolo rispetto all'incertezza stimata dal filtro in quel preciso istante.
 
-Il concetto matematico chiave in questa fase è l'**Innovazione** (o residuo), definita come la differenza tra la misurazione reale $z$ ottenuta dal sensore e la misurazione attesa $\hat{z}$. Quest'ultima viene calcolata proiettando lo stato predetto del robot nel dominio ottico del sensore tramite il modello di misura $h(x)$.
+Il concetto matematico chiave in questa fase è l'*Innovazione* (o residuo), definita come la differenza tra la misurazione reale $z$ ottenuta dal sensore e la misurazione attesa $\hat{z}$. Quest'ultima viene calcolata proiettando lo stato predetto del robot nel dominio ottico del sensore tramite il modello di misura $h(x)$.
 
 Per implementare questo controllo in modo sicuro, la classe esegue un'operazione di "anticipazione" delle formule dell'EKF prima di procedere al vero aggiornamento dello stato:
 
@@ -355,12 +350,13 @@ In questo progetto, l'obiettivo principale è stato quello di progettare e imple
 
 Durante lo sviluppo e l'analisi del progetto sono state esplorate e affrontate diverse tematiche fondamentali della robotica probabilistica:
 
-- **La necessità della Fusione Sensoriale (Sensor Fusion):** Si è dimostrato analiticamente e sperimentalmente il motivo per cui l'affidamento esclusivo a sensori propriocettivi (come l'IMU) sia insufficiente per una navigazione sicura a lungo termine. A causa della natura integrativa di questi sensori, l'errore quadratico si accumula inesorabilmente nel tempo portando a una deriva della stima. Per compensare questo fenomeno, si è resa necessaria la fusione con sensori esterocettivi (come la telecamera). Nonostante quest'ultimi comportino un maggiore costo e una superiore complessità a livello implementativo.
+- **La necessità della Fusione Sensoriale**, si è dimostrato analiticamente e sperimentalmente il motivo per cui l'affidamento esclusivo a sensori propriocettivi (come l'IMU) sia insufficiente per una navigazione sicura a lungo termine. A causa della natura integrativa di questi sensori, l'errore quadratico si accumula inesorabilmente nel tempo portando a una deriva della stima. Per compensare questo fenomeno, si è resa necessaria la fusione con sensori esterocettivi (come la telecamera). Nonostante quest'ultimi comportino un maggiore costo e una superiore complessità a livello implementativo.
 
 - **Gestione della Non Linearità**, data la forte non linearità del modello cinematico dell'uniciclo e dei modelli di osservazione ottica, si è reso necessario l'utilizzo del Filtro di Kalman Esteso (EKF). Attraverso il calcolo delle Matrici Jacobiane del modello cinematico e di misura, il sistema è in grado di linearizzare localmente il problema, permettendo di propagare correttamente le covarianze dell'errore ad ogni passo temporale.
 
 - **Gestione degli Outlier tramite Distanza di Mahalanobis**, il cuore innovativo del progetto è stato lo sviluppo di un filtro adattivo per le misurazioni anomale, essenziale poiché un singolo dato fortemente corrotto potrebbe far divergere irreparabilmente l'EKF. Il sistema implementato sfrutta la Distanza di Mahalanobis e il test statistico del Chi-Quadro ($\chi^2$), declinandoli in due strategie distinte per adattarsi alla natura dei sensori:
-  - *Per l'IMU:* è stato adottato un approccio statistico locale a *finestra mobile*, capace di identificare e rigettare spike impulsivi ad alta frequenza, distinguendoli dalle manovre volontarie del robot.
-  - *Per la Telecamera:* si è sfruttata direttamente l'architettura predittiva dell'EKF. Pesando l'errore visivo con la matrice di covarianza ($S$), il sistema riesce a scartare misurazioni statisticamente implausibili *prima* che queste possano compromettere la delicata fase di aggiornamento dello stato.
 
-Come evidenziato nella sezione dei risultati, i test condotti iniettando deliberatamente rumore anomalo (sia spike accelerometrici che false letture visive) hanno confermato l'assoluta resilienza del sistema. Il filtro ha scartato con successo le anomalie senza generare falsi negativi, permettendo all'EKF di proseguire la navigazione con un errore confinato a pochi centimetri.
+  - *Per l'IMU*, è stato adottato un approccio statistico locale a *finestra mobile*, capace di identificare e rigettare spike impulsivi ad alta frequenza, distinguendoli dalle manovre volontarie del robot.
+  - *Per la Telecamera*, si è sfruttata direttamente l'architettura predittiva dell'EKF. Pesando l'errore visivo con la matrice di covarianza ($S$), il sistema riesce a scartare misurazioni statisticamente implausibili *prima* che queste possano compromettere la delicata fase di aggiornamento dello stato.
+
+Come evidenziato nella sezione dei risultati, i test condotti iniettando deliberatamente rumore anomalo hanno confermato l'assoluta resilienza del sistema. Il filtro ha scartato con successo le anomalie senza generare *falsi negativi*, permettendo all'EKF di proseguire la navigazione con un errore confinato a pochi centimetri.
