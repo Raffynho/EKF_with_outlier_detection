@@ -48,6 +48,134 @@ Questo problema viene spesso descritto come un paradosso, per costruire una mapp
 Lo SLAM risolve questo paradosso fondendo in tempo reale i dati provenienti da vari sensori (come telecamere, LiDAR, radar e odometria) attraverso algoritmi probabilistici, come i Filtri di Kalman. 
 In questo modo, ogni volta che il veicolo acquisisce nuove informazioni sull'ambiente, il sistema aggiorna simultaneamente sia la geometria della mappa sia la stima della posizione del veicolo al suo interno.
 
+# L'Uniciclo
+
+Il modello cinematico del veicolo di tipo uniciclo è fondamentale per lo sviluppo dell'algoritmo. Di seguito vengono definiti lo stato, i vincoli e le equazioni di controllo che descrivono il movimento del robot.
+
+## Stato del robot
+Lo stato del veicolo sul piano bidimensionale è descritto dal vettore delle coordinate generalizzate $q$:
+$$
+q = \begin{bmatrix} x \\ y \\ \theta \end{bmatrix}
+$$
+dove le coordinate $(x, y)$ rappresentano la posizione del punto medio dell'asse delle ruote di trazione, e l'angolo $\theta$ rappresenta l'orientamento (heading) del veicolo rispetto all'asse X orizzontale del sistema di riferimento globale.
+
+## Vincolo Cinematico
+Il veicolo è soggetto a un vincolo cinematico non olonomo, il quale impone che l'uniciclo non possa traslare lateralmente lungo la direzione dell'asse delle ruote, quindi la velocità perpendicolare all'orientamento del veicolo deve essere nulla:
+$$
+\dot{x} \sin(\theta) - \dot{y} \cos(\theta) = 0
+$$
+
+## Equazioni di Stato e di Controllo
+Esprimendo il vincolo nella forma pfaffiana e calcolandone lo spazio nullo per trovare le direzioni di movimento consentite, il modello cinematico vincolato assume la forma $\dot{q} = G(q)u$. 
+
+Il vettore degli ingressi di controllo è definito come $u = [u_1, u_2]^T$, dove $u_1$ rappresenta la velocità di avanzamento lineare e $u_2$ rappresenta la velocità angolare di sterzata. Le equazioni di stato che descrivono l'evoluzione delle coordinate nel tempo diventano quindi:
+$$
+\begin{bmatrix} \dot{x} \\ \dot{y} \\ \dot{\theta} \end{bmatrix} = \begin{bmatrix} \cos(\theta) & 0 \\ \sin(\theta) & 0 \\ 0 & 1 \end{bmatrix} 
+\begin{bmatrix} u_1 \\ u_2 \end{bmatrix}
+$$
+
+Il modello esplicito risulta essere:
+
+- $\dot{x} = u_1 \cos(\theta)$
+- $\dot{y} = u_1 \sin(\theta)$
+- $\dot{\theta} = u_2$
+
+In fase di implementazione pratica, come nel caso di un robot a guida differenziale, questi ingressi di controllo sono legati alle velocità di rotazione della ruota destra ($\omega_r$) e sinistra ($\omega_l$) attraverso le relazioni $u_1 = \frac{r}{2}(\omega_r + \omega_l)$ e $u_2 = \frac{r}{L}(\omega_r - \omega_l)$, con $r$ raggio e $L$ la lunghezza di inteasse delle ruote.
+
+
+
+
+## Modelli dei Sensori a bordo
+
+Nel simulatore, l'uniciclo e' equipaggiato con due sensori:
+
+- *IMU* 
+- *Telecamera*
+
+questa coppia rappresenta una configurazione molto comune poiche' solitamente si tende ad accoppiare sensori propriocettivi con sensori esterocettivi per ragioni che verranno trattate in seguito.
+
+### IMU Planare
+
+L'IMU è un sensore propriocettivo che misura accelerazioni lungo gli assi cardinali, nel caso della versioni planare le misurazioni ottenute sono:
+
+- Accelerazione lineare lungo l'asse $x$ del robot ($a_x$).
+- Accelerazione lineare lungo l'asse $y$ del robot ($a_y$).
+- Velocità angolare attorno all'asse $z$ (giroscopio, $\omega$).
+
+#### Modello del rumore e implementazione
+
+I sensori reali sono affetti da imperfezioni, quindi nella classe `IMU` della simulazione al segnale generato dal calcolo della cinematica dell'uniciclo vengono aggiunti due tipi di disturbo:
+
+- **Rumore Gaussiano** fluttuazioni casuali a media nulla aggiunte a ogni singola lettura
+- **Bias** un errore sistematico a lenta variazione temporale. Nel codice, il bias è modellato come un *Random Walk*, ovvero il bias attuale è uguale al bias precedente sommato ad un piccolo rumore gaussiano. 
+
+```{python}
+# Update bias random walk
+self.bg +=  delta_t * self.rng.normal(scale=self.gyro_bias_rw_std)
+self.ba +=  delta_t * self.rng.normal(scale=self.accel_bias_rw_std, size=2)
+
+# ...
+
+# Misure ottenute dall'IMU con aggiunta di bias e rumore bianco
+gyro_z = (omega + self.bg) + self.rng.normal(scale=self.gyro_noise_std)
+accel_b = (ab + self.ba) + self.rng.normal(scale=self.accel_noise_std, size=2)
+```
+
+#### Problemi con sensori propriocettivi 
+
+Conoscendo l'accelerazione di ogni asse del robot e' teoricamente ricavabile lo stato del robot semplicemente integrando l'accelerazione e poi integrando la velocita'.
+Tuttavia non viene mai usata una IMU o più in generale un sensore propriocettivo, come unico sensore, perche' si puo' dimostrare che questi tipi di sensori accumulano errore.
+
+Quindi per il caso della *IMU*:
+
+$$
+x(t) = x_0 + v_0 t + \frac{1}{2} a_m t^2 = x_0 + v_0 t + \frac{1}{2} a t^2 + \frac{1}{2} \epsilon t^2
+$$
+$$
+\begin{align*}
+E(x(t)) &= E(\bar{x}(t) + \frac{1}{2} \epsilon t^2) \\
+        &= E(\bar{x}(t)) + E(\frac{1}{2} t^2 E(\epsilon)) \\
+        &= \bar{x}(t) + \frac{1}{2} t^2 E(\epsilon)
+\end{align*}
+$$
+$$
+\begin{align*}
+E((x(t) - \bar{x}(t))^2) &= E((\frac{1}{2} \epsilon t^2)^2) \\
+                        &= \frac{1}{4} t^4 E(\epsilon^2) \\
+                        &= \frac{1}{4} t^4 E((\epsilon - E(\epsilon))^2) \\
+                        &= \frac{1}{4} t^4 \sigma^2
+\end{align*}
+$$
+$$
+\text{Sd} \rightarrow \sigma_x = \frac{t^2}{2} \sigma
+$$
+
+Quindi possiamo vedere chiaramente che la deviazione standard (*sd*) del sensore dipende direttamente dal tempo.
+Proprio per questo motivo non vengono usati solo sensori propriocettivi ma l'aggiunta di sensori esterocettivo permettono di ottenere un riferimento con l'ambiente esterno.
+
+### Telecamera
+
+La *Telecamera* all'interno della simulazione viene semplificata usando il modello *pin-hole*; questa riconosce punti di riferimento posizionati all'interno dell'ambiente, chiamati *landmark*, la cui posizione nel frame world $<w>$ e' conosciuta a priori. 
+
+#### Funzionamento e Vincoli Visivi
+La telecamera viene limitata in quello che vede secondo due caratteristiche che sono le seguenti:
+
+- **Field of View (FOV):** un angolo visivo limitato
+- **Range:** range di distanza per la quale la telecamera riesce a vedere i landmark
+
+Il metodo `check_fov()` si assicura che solo i landmark che rientrano in queste limitazioni geometriche generino una misurazione valida.
+
+#### Proiezione e Utilizzo nell'EKF (Fase di Aggiornamento)
+Quando un landmark è visibile, la sua posizione reale nel mondo ($l_w$) viene trasformata nelle coordinate locali del robot (Body frame, $l_b$) tramite la matrice di rotazione inversa $R_{BW}$. 
+Successivamente, per simulare la formazione dell'immagine sul sensore ottico, le coordinate vengono normalizzate rispetto alla profondità $x$ (coordinate omogenee) e moltiplicate per i parametri intrinseci della telecamera, ottenendo una coordinata in pixel $u$ affetta da rumore gaussiano.
+
+Nel file `kalman_filter.py`, la fase di *Aggiornamento* utilizza queste letture in pixel per correggere lo stato. Il metodo `measurement_model()` replica esattamente il calcolo della proiezione ottica per calcolare la misura attesa $\hat{z}$. Nello stesso momento, la funzione `measurement_jacobian()` calcola la matrice $H$, applicando la regola della catena delle derivate:
+
+$$
+H = \frac{\partial u}{\partial \tilde{l}_b} \cdot \frac{\partial \tilde{l}_b}{\partial l_b} \cdot \frac{\partial l_b}{\partial x}
+$$
+
+Questa matrice $H$ è fondamentale per calcolare l'Incertezza dell'Innovazione $S$ e il Guadagno di Kalman $W$, chiudendo così il ciclo dell'algoritmo ricorsivo e permettendo al sistema di gestire gli outlier tramite i calcoli della Distanza di Mahalanobis.
 
 # Filtro di Kalman
 
@@ -93,130 +221,6 @@ P(k+1) = (I - W(k+1)H(k+1))P(k+1)^-
 \end{cases}
 $$
 
-## Cinematica dell'Uniciclo: Stato e Controllo
-
-Il modello cinematico del veicolo di tipo uniciclo è fondamentale per lo sviluppo dell'algoritmo di SLAM. Di seguito vengono definiti lo stato, i vincoli e le equazioni di controllo che descrivono il movimento del robot.
-
-### Stato del robot
-Lo stato del veicolo sul piano bidimensionale è descritto dal vettore delle coordinate generalizzate $q$:
-$$
-q = \begin{bmatrix} x \\ y \\ \theta \end{bmatrix}
-$$
-dove le coordinate $(x, y)$ rappresentano la posizione del punto medio dell'asse delle ruote di trazione, e l'angolo $\theta$ rappresenta l'orientamento (heading) del veicolo rispetto all'asse X orizzontale del sistema di riferimento globale.
-
-### Vincolo Cinematico
-Il veicolo è soggetto a un vincolo cinematico non olonomo, il quale impone che l'uniciclo non possa traslare lateralmente lungo la direzione dell'asse delle ruote, quindi la velocità perpendicolare all'orientamento del veicolo deve essere nulla:
-$$
-\dot{x} \sin(\theta) - \dot{y} \cos(\theta) = 0
-$$
-
-### Equazioni di Stato e di Controllo
-Esprimendo il vincolo nella forma pfaffiana e calcolandone lo spazio nullo per trovare le direzioni di movimento consentite, il modello cinematico vincolato assume la forma $\dot{q} = G(q)u$. 
-
-Il vettore degli ingressi di controllo è definito come $u = [u_1, u_2]^T$, dove $u_1$ rappresenta la velocità di avanzamento lineare e $u_2$ rappresenta la velocità angolare di sterzata. Le equazioni di stato che descrivono l'evoluzione delle coordinate nel tempo diventano quindi:
-$$
-\begin{bmatrix} \dot{x} \\ \dot{y} \\ \dot{\theta} \end{bmatrix} = \begin{bmatrix} \cos(\theta) & 0 \\ \sin(\theta) & 0 \\ 0 & 1 \end{bmatrix} 
-\begin{bmatrix} u_1 \\ u_2 \end{bmatrix}
-$$
-
-Il modello esplicito risulta essere:
-
-- $\dot{x} = u_1 \cos(\theta)$
-- $\dot{y} = u_1 \sin(\theta)$
-- $\dot{\theta} = u_2$
-
-In fase di implementazione pratica, come nel caso di un robot a guida differenziale, questi ingressi di controllo sono legati alle velocità di rotazione della ruota destra ($\omega_r$) e sinistra ($\omega_l$) attraverso le relazioni $u_1 = \frac{r}{2}(\omega_r + \omega_l)$ e $u_2 = \frac{r}{L}(\omega_r - \omega_l)$, con $r$ raggio e $L$ la lunghezza di inteasse delle ruote.
-
-
-# Modelli dei Sensori
-
-Nel simulatore, l'uniciclo e' equipaggiato con due sensori:
-
-- *IMU* 
-- *Telecamera*
-
-questa coppia rappresenta una configurazione molto comune poiche' solitamente si tende ad accoppiare sensori propriocettivi con sensori esterocettivi per ragioni che verranno trattate in seguito.
-
-## IMU Planare
-
-L'IMU è un sensore propriocettivo che misura accelerazioni lungo gli assi cardinali, nel caso della versioni planare le misurazioni ottenute sono:
-
-- Accelerazione lineare lungo l'asse $x$ del robot ($a_x$).
-- Accelerazione lineare lungo l'asse $y$ del robot ($a_y$).
-- Velocità angolare attorno all'asse $z$ (giroscopio, $\omega$).
-
-### Modello del rumore e implementazione
-
-I sensori reali sono affetti da imperfezioni, quindi nella classe `IMU` della simulazione al segnale generato dal calcolo della cinematica dell'uniciclo vengono aggiunti due tipi di disturbo:
-
-- **Rumore Gaussiano** fluttuazioni casuali a media nulla aggiunte a ogni singola lettura
-- **Bias** un errore sistematico a lenta variazione temporale. Nel codice, il bias è modellato come un *Random Walk*, ovvero il bias attuale è uguale al bias precedente sommato ad un piccolo rumore gaussiano. 
-
-```{python}
-# Update bias random walk
-self.bg +=  delta_t * self.rng.normal(scale=self.gyro_bias_rw_std)
-self.ba +=  delta_t * self.rng.normal(scale=self.accel_bias_rw_std, size=2)
-
-# ...
-
-# Misure ottenute dall'IMU con aggiunta di bias e rumore bianco
-gyro_z = (omega + self.bg) + self.rng.normal(scale=self.gyro_noise_std)
-accel_b = (ab + self.ba) + self.rng.normal(scale=self.accel_noise_std, size=2)
-```
-
-### Problemi con sensori propriocettivi 
-
-Conoscendo l'accelerazione di ogni asse del robot e' teoricamente ricavabile lo stato del robot semplicemente integrando l'accelerazione e poi integrando la velocita'.
-Tuttavia non viene mai usata una IMU o più in generale un sensore propriocettivo, come unico sensore, perche' si puo' dimostrare che questi tipi di sensori accumulano errore.
-
-Quindi per il caso della *IMU*:
-
-$$
-x(t) = x_0 + v_0 t + \frac{1}{2} a_m t^2 = x_0 + v_0 t + \frac{1}{2} a t^2 + \frac{1}{2} \epsilon t^2
-$$
-$$
-\begin{align}
-E(x(t)) &= E(\bar{x}(t) + \frac{1}{2} \epsilon t^2) = E(\bar{x}(t)) + E(\frac{1}{2} t^2 E(\epsilon)) \\
-&= \bar{x}(t) + \frac{1}{2} t^2 E(\epsilon)
-\end{align}
-$$
-$$
-\begin{align}
-E((x(t) - \bar{x}(t))^2) &= E((\frac{1}{2} \epsilon t^2)^2) = \frac{1}{4} t^4 E(\epsilon^2) \\
-                        &= \frac{1}{4} t^4 E((\epsilon - E(\epsilon))^2) \\
-                        &= \frac{1}{4} t^4 \sigma^2
-\end{align}
-$$
-$$
-\text{Sd} \rightarrow \sigma_x = \frac{t^2}{2} \sigma
-$$
-
-Quindi possiamo vedere chiaramente che la deviazione standard (*sd*) del sensore dipende direttamente dal tempo.
-Proprio per questo motivo non vengono usati solo sensori propriocettivi ma l'aggiunta di sensori esterocettivo permettono di ottenere un riferimento con l'ambiente esterno.
-
-## Telecamera
-
-La *Telecamera* all'interno della simulazione viene semplificata usando il modello *pin-hole*; questa riconosce punti di riferimento posizionati all'interno dell'ambiente, chiamati *landmark*, la cui posizione nel frame world $<w>$ e' conosciuta a priori. 
-
-### Funzionamento e Vincoli Visivi
-La telecamera viene limitata in quello che vede secondo due caratteristiche che sono le seguenti:
-
-- **Field of View (FOV):** un angolo visivo limitato
-- **Range:** range di distanza per la quale la telecamera riesce a vedere i landmark
-
-Il metodo `check_fov()` si assicura che solo i landmark che rientrano in queste limitazioni geometriche generino una misurazione valida.
-
-### Proiezione e Utilizzo nell'EKF (Fase di Aggiornamento)
-Quando un landmark è visibile, la sua posizione reale nel mondo ($l_w$) viene trasformata nelle coordinate locali del robot (Body frame, $l_b$) tramite la matrice di rotazione inversa $R_{BW}$. 
-Successivamente, per simulare la formazione dell'immagine sul sensore ottico, le coordinate vengono normalizzate rispetto alla profondità $x$ (coordinate omogenee) e moltiplicate per i parametri intrinseci della telecamera, ottenendo una coordinata in pixel $u$ affetta da rumore gaussiano.
-
-Nel file `kalman_filter.py`, la fase di *Aggiornamento* utilizza queste letture in pixel per correggere lo stato. Il metodo `measurement_model()` replica esattamente il calcolo della proiezione ottica per calcolare la misura attesa $\hat{z}$. Nello stesso momento, la funzione `measurement_jacobian()` calcola la matrice $H$, applicando la regola della catena delle derivate:
-
-$$
-H = \frac{\partial u}{\partial \tilde{l}_b} \cdot \frac{\partial \tilde{l}_b}{\partial l_b} \cdot \frac{\partial l_b}{\partial x}
-$$
-
-Questa matrice $H$ è fondamentale per calcolare l'Incertezza dell'Innovazione $S$ e il Guadagno di Kalman $W$, chiudendo così il ciclo dell'algoritmo ricorsivo e permettendo al sistema di gestire gli outlier tramite i calcoli della Distanza di Mahalanobis.
 
 # Gestione degli Outliers 
 
@@ -277,7 +281,7 @@ else:
   return measurement
 ```
 
-## Nella Camera
+## Nella Telecamera
 
 A differenza dell'IMU, che basa il filtraggio su una statistica ricavata da una finestra temporale di misurazioni passate, il rigetto degli outlier per la telecamera utilizza un approccio molto più robusto e reattivo basato direttamente sull'architettura predittiva del Filtro di Kalman Esteso. Questo metodo valuta l'errore non in modo assoluto, ma pesandolo rispetto all'incertezza stimata dal filtro in quel preciso istante.
 
@@ -291,7 +295,7 @@ $$
 S = H P^- H^T + R
 $$
 Questa matrice $S$ rappresenta, in termini statistici, la covarianza dei residui, ovvero quanto "siamo insicuri" riguardo alla misurazione che stiamo per ricevere.
-3. **Calcolo della Distanza e Reiezione:** Avendo a disposizione l'innovazione e la sua incertezza $S$, si calcola la Distanza di Mahalanobis. Poiché nel nostro simulatore la telecamera semplificata rileva la posizione del landmark come coordinata pixel lungo una singola dimensione ottica, i gradi di libertà del test sono pari a 1. Di conseguenza, la matrice $S$ è uno scalare e la distanza di Mahalanobis collassa in un semplice rapporto quadratico:
+3. **Calcolo della Distanza e Reiezione**, avendo a disposizione l'innovazione e la sua incertezza $S$, si calcola la Distanza di Mahalanobis. Poiché nel nostro simulatore la telecamera semplificata rileva la posizione del landmark come coordinata pixel lungo una singola dimensione ottica, i gradi di libertà del test sono pari a 1. Di conseguenza, la matrice $S$ è uno scalare e la distanza di Mahalanobis collassa in un semplice rapporto quadratico:
 $$
 D^2 = \frac{(z - \hat{z})^2}{S}
 $$
@@ -326,11 +330,11 @@ for lm, z_true in zip(camera_measurements['landmarks'], camera_measurements['pix
         self.outliers_rejected_count += 1
 ```
 
-# Risultati e Validazione Sperimentale
+# Risultati e Validazione
 
 Per dimostrare l'effettiva robustezza dell'algoritmo sviluppato, la simulazione è stata testata iniettando deliberatamente degli errori artificiali (outlier) all'interno delle misurazioni dei sensori. I risultati seguenti mostrano il comportamento del sistema di rilevamento e la resilienza del Filtro di Kalman Esteso.
 
-## Efficacia della Reiezione sull'IMU
+## Efficacia del filtro per la IMU
 
 Come si evince dal grafico, l'algoritmo basato sulla finestra mobile statistica ha identificato con successo le anomalie. C'è una corrispondenza esatta tra gli spike generati dal simulatore e quelli isolati dal filtro. Rigettando questi picchi e sostituendoli con il valore medio atteso, il filtro ha evitato che l'integrazione di accelerazioni irreali portasse a una deriva immediata della posizione stimata.
 
@@ -338,7 +342,7 @@ Come si evince dal grafico, l'algoritmo basato sulla finestra mobile statistica 
 
 
 
-## Resilienza dell'EKF alle Anomalie Visive
+## Efficacia del filtro per la Telecamera
 
 Il grafico seguente traccia l'errore assoluto di stima della posizione nel tempo. Le linee verticali rosse indicano gli istanti in cui sono stati iniettati gli outlier visivi. È fondamentale notare come l'errore di posizione dell'EKF rimanga limitato e stabile, senza subire aumenti significativi in corrispondenza dei dati anomali. 
 
