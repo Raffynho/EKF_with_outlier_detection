@@ -26,9 +26,6 @@ class IMUOutlierRejector:
         mu = np.mean(history_array, axis=0)
         
         Sigma = np.cov(history_array, rowvar=False)
-        
-        # senza far esplodere la Distanza di Mahalanobis.
-        Sigma += np.eye(self.dof) * 5.0
 
         diff = z - mu
         mahalanobis_sq = diff.T @ np.linalg.inv(Sigma) @ diff
