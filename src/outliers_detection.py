@@ -35,9 +35,9 @@ class IMUOutlierRejector:
             self.outlier_detected = True
             print(f"[Outlier Rejector] Spike rilevato! D^2: {mahalanobis_sq:.2f} > Soglia: {self.chi2_threshold:.2f}")
             
-            # NUOVO BLOCCO: Se vediamo 3 outlier di fila, è l'utente che guida, non un errore!
+            # Controllo che non ci siano stati troppi outliers consecutivi
             if self.consecutive_outliers > 3:
-                print("   -> [Attenzione] Troppi outlier consecutivi! È una manovra reale, resetto il filtro.")
+                print("   -> [Attenzione] Molti outlier consecutivi.")
                 # Resettiamo la storia alla nuova dinamica
                 self.history = [z]
                 self.consecutive_outliers = 0
@@ -47,7 +47,7 @@ class IMUOutlierRejector:
             return mu.reshape((3,1))
             
         else:
-            # DATO VALIDO: Azzeriamo il contatore e aggiorniamo la finestra
+            # Dato valido
             self.outlier_detected = False
             self.consecutive_outliers = 0
             self.history.pop(0)
@@ -60,7 +60,7 @@ class CameraOutlierRejector:
     def __init__(self, confidence_level=0.99):
         self.dof = 1
 
-        # Soglia del Chi-Quadro per 1 grado di libertà (pixel 1D)
+        # Calcolo della soglia del Chi-Quadro 
         self.chi2_threshold = chi2.ppf(confidence_level, df=self.dof)
         self.outliers_rejected_count = 0
 
@@ -68,26 +68,21 @@ class CameraOutlierRejector:
         filtered_landmarks = []
         filtered_pixels = []
         
-        # ANTICIPAZIONE DELL'EKF: 
-        # Calcoliamo lo stato e la covarianza predetti esattamente come farà l'EKF 
-        # all'inizio della sua funzione update()
+        # Predizione dello stato e la covarianza come e' fatto nell'EKF
         pred_state = ekf.state + ekf.d_state * delta_t
         pred_state[4, 0] = (pred_state[4, 0] + np.pi) % (2 * np.pi) - np.pi
         
         pred_P = ekf.P + ekf.P_dot * delta_t
         
         for lm, z_true in zip(camera_measurements['landmarks'], camera_measurements['pixels']):
-            
-            # MISURAZIONE ATTESA E JACOBIANO (H):
-            # Usiamo direttamente il modello matematico interno all'EKF!
+
+            # Misurazione attesa e Jacobiano
             z_pred, H_i = ekf.measurement_model(pred_state, lm)
-            
-            # COVARIANZA DELL'INNOVAZIONE (S):
-            # Proiettiamo l'incertezza dello stato (pred_P) nello spazio dei pixel
-            # e sommiamo il rumore del sensore (ekf.R)
+
+            # Calcolo della covarianza dell'innovazione: Proiettando l'incertezza dello stato (pred_P) nello spazio dei pixel e sommiamo il rumore del sensore (ekf.R)
             S_i = H_i @ pred_P @ H_i.T + ekf.R
             
-            # Estraiamo il valore scalare in modo sicuro
+            # Estraiamo il valore scalare 
             S_i_scalar = float(np.squeeze(S_i))
             
             # CALCOLO MAHALANOBIS
@@ -100,6 +95,6 @@ class CameraOutlierRejector:
                 filtered_pixels.append(z_true)
             else:
                 self.outliers_rejected_count += 1
-                print(f"[Camera Rejector] Scartato! Err: {diff:.2f}px | D^2: {mahalanobis_sq:.2f} > Soglia: {self.chi2_threshold:.2f} (Incertezza S: {S_i_scalar:.4f})")
+                print(f"[Camera Rejector] Dato Scartato! Err: {diff:.2f}px | D^2: {mahalanobis_sq:.2f} > Soglia: {self.chi2_threshold:.2f} (Incertezza S: {S_i_scalar:.4f})")
 
         return {'landmarks': filtered_landmarks, 'pixels': filtered_pixels}
