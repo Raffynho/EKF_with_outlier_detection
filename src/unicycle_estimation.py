@@ -370,7 +370,7 @@ class SimulationWithEstimation():
         # IMU measurement from current state, input and delta_t
         raw_meas = self.imu.step(self.uni.state, self.uni.u, delta_t=self.delta_t) 
 
-        # INIEZIONE RANDOM: 2% di probabilità a ogni frame di avere uno spike sull'IMU
+        # Iniezione random di outliers su IMU
         if np.random.rand() < 0.01:  
             magnitudo = np.random.uniform(15.0, 40.0)
             segno = np.random.choice([-1, 1])
@@ -379,7 +379,7 @@ class SimulationWithEstimation():
             spike_axis = np.random.randint(0, 3) # Sceglie a caso: 0 (acc_x), 1 (acc_y), o 2 (gyro_z)
             raw_meas[spike_axis, 0] += spike_magnitude
             imu_spike_generated = True
-            print(f"\n[SIMULATORE] Generato spike sull'IMU (asse {spike_axis}, val: {spike_magnitude})!")
+            print(f"\n[SIMULATORE] Generato un outlier sull'IMU (asse {spike_axis}, val: {spike_magnitude})!")
 
         clean_meas = self.imu_rejector.process(raw_meas)
 
@@ -389,7 +389,7 @@ class SimulationWithEstimation():
         # Camera measurement from current state and landmarks
         camera_measurements = self.camera.step(self.landmarks, self.uni.state[0:2], self.uni.state[3]) 
 
-        # INIEZIONE RANDOM: 5% di probabilità per OGNI landmark visibile di essere un outlier
+        # Iniezione di outlier per la Camera
         if len(camera_measurements['pixels']) > 0:
             for i in range(len(camera_measurements['pixels'])):
                 if np.random.rand() < 0.01:  
@@ -399,10 +399,8 @@ class SimulationWithEstimation():
 
                     camera_measurements['pixels'][i] += spike_pixel
                     cam_outliers_generated = True
-                    print(f"\n[SIMULATORE] Generato outlier sulla telecamera!")
+                    print(f"\n[SIMULATORE] Generato outlier sulla Camera")
         
-        # Passiamo direttamente l'oggetto EKF e il delta_t per permettere
-        # al rejector di calcolare l'incertezza dinamica S
         clean_camera_measurements = self.camera_rejector.process(
             camera_measurements, 
             self.ekf, 
