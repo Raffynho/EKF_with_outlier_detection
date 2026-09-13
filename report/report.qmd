@@ -50,14 +50,16 @@ In questo modo, ogni volta che il veicolo acquisisce nuove informazioni sull'amb
 
 # L'Uniciclo
 
-Il modello cinematico del veicolo di tipo uniciclo è fondamentale per lo sviluppo dell'algoritmo. Di seguito vengono definiti lo stato, i vincoli e le equazioni di controllo che descrivono il movimento del robot.
+Il modello dell'uniciclo è ampiamente utilizzato nel campo della robotica mobile, sia nell'automazione industriale che nella ricerca accademica, grazie al suo perfetto bilanciamento tra realismo fisico e complessità. 
+Un vantaggio fondamentale di questo modello è la sua grande utilità pratica, le equazioni cinematiche che descrivono il movimento dell'uniciclo sono le stesse che governano la maggior parte dei veicoli cingolati e dei robot a guida differenziale. 
+Questo significa che, in fase di implementazione pratica, gli ingressi di controllo teorici definiti per l'uniciclo possono essere facilmente tradotti nelle velocità di rotazione effettive della ruota destra e sinistra di un robot reale. Di conseguenza, l'uniciclo offre una base ideale che coniuga la semplicità teorica con una immediata utilità e applicabilità sperimentale.
 
 ## Stato del robot
-Lo stato del veicolo sul piano bidimensionale è descritto dal vettore delle coordinate generalizzate $q$:
+Lo stato del veicolo sul piano bidimensionale è descritto dal vettore delle coordinate generalizzate $S$:
 $$
-q = \begin{bmatrix} x \\ y \\ \theta \end{bmatrix}
+S = \begin{bmatrix} x \\ y \\ \theta \end{bmatrix}
 $$
-dove le coordinate $(x, y)$ rappresentano la posizione del punto medio dell'asse delle ruote di trazione, e l'angolo $\theta$ rappresenta l'orientamento (heading) del veicolo rispetto all'asse X orizzontale del sistema di riferimento globale.
+dove le coordinate $(x, y)$ rappresentano la posizione del punto medio dell'asse delle ruote di trazione, e l'angolo $\theta$ rappresenta l'orientamento del veicolo rispetto all'asse X orizzontale del sistema di riferimento globale.
 
 ## Vincolo Cinematico
 Il veicolo è soggetto a un vincolo cinematico non olonomo, il quale impone che l'uniciclo non possa traslare lateralmente lungo la direzione dell'asse delle ruote, quindi la velocità perpendicolare all'orientamento del veicolo deve essere nulla:
@@ -66,8 +68,6 @@ $$
 $$
 
 ## Equazioni di Stato e di Controllo
-Esprimendo il vincolo nella forma pfaffiana e calcolandone lo spazio nullo per trovare le direzioni di movimento consentite, il modello cinematico vincolato assume la forma $\dot{q} = G(q)u$. 
-
 Il vettore degli ingressi di controllo è definito come $u = [u_1, u_2]^T$, dove $u_1$ rappresenta la velocità di avanzamento lineare e $u_2$ rappresenta la velocità angolare di sterzata. Le equazioni di stato che descrivono l'evoluzione delle coordinate nel tempo diventano quindi:
 $$
 \begin{bmatrix} \dot{x} \\ \dot{y} \\ \dot{\theta} \end{bmatrix} = \begin{bmatrix} \cos(\theta) & 0 \\ \sin(\theta) & 0 \\ 0 & 1 \end{bmatrix} 
@@ -165,15 +165,11 @@ La telecamera viene limitata in quello che vede secondo due caratteristiche che 
 
 Il metodo `check_fov()` si assicura che solo i landmark che rientrano in queste limitazioni geometriche generino una misurazione valida.
 
-#### Proiezione e Utilizzo nell'EKF (Fase di Aggiornamento)
+#### Proiezione e Utilizzo nell'EKF
 Quando un landmark è visibile, la sua posizione reale nel mondo ($l_w$) viene trasformata nelle coordinate locali del robot (Body frame, $l_b$) tramite la matrice di rotazione inversa $R_{BW}$. 
-Successivamente, per simulare la formazione dell'immagine sul sensore ottico, le coordinate vengono normalizzate rispetto alla profondità $x$ (coordinate omogenee) e moltiplicate per i parametri intrinseci della telecamera, ottenendo una coordinata in pixel $u$ affetta da rumore gaussiano.
+Successivamente, per simulare la formazione dell'immagine sul sensore ottico, le coordinate vengono normalizzate rispetto alla profondità $x$ e moltiplicate per i parametri intrinseci della telecamera, ottenendo una coordinata in pixel $u$ affetta da rumore gaussiano.
 
-Nel file `kalman_filter.py`, la fase di *Aggiornamento* utilizza queste letture in pixel per correggere lo stato. Il metodo `measurement_model()` replica esattamente il calcolo della proiezione ottica per calcolare la misura attesa $\hat{z}$. Nello stesso momento, la funzione `measurement_jacobian()` calcola la matrice $H$, applicando la regola della catena delle derivate:
-
-$$
-H = \frac{\partial u}{\partial \tilde{l}_b} \cdot \frac{\partial \tilde{l}_b}{\partial l_b} \cdot \frac{\partial l_b}{\partial x}
-$$
+Nel file `kalman_filter.py`, la fase di *Aggiornamento* utilizza queste letture in pixel per correggere lo stato. Il metodo `measurement_model()` replica esattamente il calcolo della proiezione ottica per calcolare la misura attesa $\hat{z}$. Nello stesso momento, la funzione `measurement_jacobian()` calcola la matrice $H$.
 
 Questa matrice $H$ è fondamentale per calcolare l'Incertezza dell'Innovazione $S$ e il Guadagno di Kalman $W$, chiudendo così il ciclo dell'algoritmo ricorsivo e permettendo al sistema di gestire gli outlier tramite i calcoli della Distanza di Mahalanobis.
 
@@ -238,6 +234,7 @@ D^2 = (z - \mu)^T \Sigma^{-1} (z - \mu)
 $$
 
 Da queste equazioni si evince il comportamento del filtro:
+
 - Se l'incertezza $\Sigma$ è piccola, anche un piccolo scostamento $(z - \mu)$ genererà un $D^2$ molto grande rendendo il filtro meno tollerante.
 - Se l'incertezza $\Sigma$ è grande, il termine $\Sigma^{-1}$ rende il filtro più tollerante.
 
@@ -248,8 +245,8 @@ Sotto l'assunzione che il rumore del sistema sia bianco, la variabile statistica
 Il filtro degli outlier funziona impostando un *livello di confidenza* (es. 95% o 99%). Tramite le tabelle statistiche della distribuzione $\chi^2$, si ricava un valore di soglia. 
 Il processo decisionale è quindi un semplice test d'ipotesi:
 
-1. Se $D^2 \leq \text{soglia}$, il dato appartiene statisticamente alla distribuzione attesa. Viene accettato.
-2. Se $D^2 > \text{soglia}$, il dato è statisticamente troppo improbabile. Viene classificato come outlier e rigettato.
+- Se $D^2 \leq \text{soglia}$, il dato appartiene statisticamente alla distribuzione attesa. Viene accettato.
+- Se $D^2 > \text{soglia}$, il dato è statisticamente troppo improbabile. Viene classificato come outlier e rigettato.
 
 ## Nella IMU
 
@@ -259,23 +256,33 @@ Nel caso della IMU, il filtro degli outlier mantiene una finestra mobile di misu
 ```{python}
 # Calcolo della statistica sulla finestra mobile
 history_array = np.array(self.history)
-mu = np.mean(history_array, axis=0)  
+mu = np.mean(history_array, axis=0)
+
 Sigma = np.cov(history_array, rowvar=False)
 
-# Calcolo della distanza di Mahalanobis
 diff = z - mu
 mahalanobis_sq = diff.T @ np.linalg.inv(Sigma) @ diff
 
 if mahalanobis_sq > self.chi2_threshold:
-  # Dato invalido
+  self.consecutive_outliers += 1
   self.outlier_detected = True
-  print(f"[Outlier Rejector] Outlier rilevato! D^2: {mahalanobis_sq:.2f} > Soglia: {self.chi2_threshold:.2f}")
+  print(f"[Outlier Rejector] Spike rilevato! D^2: {mahalanobis_sq:.2f} > Soglia: {self.chi2_threshold:.2f}")
+  
+  # Controllo che non ci siano stati troppi outliers consecutivi
+  if self.consecutive_outliers > 3:
+    print("   -> [Attenzione] Molti outlier consecutivi.")
+    # Resettiamo la storia alla nuova dinamica
+    self.history = [z]
+    self.consecutive_outliers = 0
+    return measurement
 
+  # Ritorna la media storica per ignorare il singolo spike
   return mu.reshape((3,1))
     
 else:
   # Dato valido
   self.outlier_detected = False
+  self.consecutive_outliers = 0
   self.history.pop(0)
   self.history.append(z)
   return measurement
@@ -285,9 +292,9 @@ else:
 
 A differenza dell'IMU, che basa il filtraggio su una statistica ricavata da una finestra temporale di misurazioni passate, il rigetto degli outlier per la telecamera utilizza un approccio molto più robusto e reattivo basato direttamente sull'architettura predittiva del Filtro di Kalman Esteso. Questo metodo valuta l'errore non in modo assoluto, ma pesandolo rispetto all'incertezza stimata dal filtro in quel preciso istante.
 
-Il concetto matematico chiave in questa fase è l'*Innovazione* (o residuo), definita come la differenza tra la misurazione reale $z$ ottenuta dal sensore e la misurazione attesa $\hat{z}$. Quest'ultima viene calcolata proiettando lo stato predetto del robot nel dominio ottico del sensore tramite il modello di misura $h(x)$.
+Il concetto chiave in questa fase è l'*Innovazione* (o residuo), definita come la differenza tra la misurazione reale $z$ ottenuta dal sensore e la misurazione attesa $\hat{z}$. Quest'ultima viene calcolata proiettando lo stato predetto del robot nel dominio ottico del sensore tramite il modello di misura $h(x)$.
 
-Per implementare questo controllo in modo sicuro, la classe esegue un'operazione di "anticipazione" delle formule dell'EKF prima di procedere al vero aggiornamento dello stato:
+Per implementare questo controllo, la classe esegue un'operazione di "anticipazione" dell'EKF prima di procedere al vero aggiornamento dello stato, che cosiste nella seguenti operazioni:
 
 1. **Predizione dello Stato e della Covarianza**, l'algoritmo calcola in anticipo lo stato predetto a priori $\hat{x}^-$ e propaga la matrice di covarianza dell'errore $P^-$.
 2. **Calcolo della Covarianza dell'Innovazione ($S$)**, non ha senso valutare l'errore $(z - \hat{z})$ senza conoscere l'incertezza associata a quella previsione. Utilizzando la Matrice Jacobiana $H$, calcolata nel punto di predizione, il filtro proietta l'incertezza dello stato nello spazio delle misurazioni (i pixel) e le somma il rumore intrinseco del sensore $R$. La formula applicata è:
@@ -303,36 +310,41 @@ Se questo scostamento supera la soglia statistica dettata dalla distribuzione $\
 
 
 ```{python}
-# Anticipazione della fase di predizione dell'EKF
+# Predizione dello stato e la covarianza come e' fatto nell'EKF
 pred_state = ekf.state + ekf.d_state * delta_t
 pred_state[4, 0] = (pred_state[4, 0] + np.pi) % (2 * np.pi) - np.pi
+
 pred_P = ekf.P + ekf.P_dot * delta_t
 
 for lm, z_true in zip(camera_measurements['landmarks'], camera_measurements['pixels']):
-    
-    # Misurazione attesa e Jacobiano (H) proiettati dal modello interno dell'EKF
-    z_pred, H_i = ekf.measurement_model(pred_state, lm)
-    
-    # Covarianza dell'innovazione (S) incertezza dello stato + rumore del sensore
-    S_i = H_i @ pred_P @ H_i.T + ekf.R
-    S_i_scalar = float(np.squeeze(S_i))
-    
-    # Calcolo della Distanza di Mahalanobis 
-    diff = float(z_true - z_pred)
-    mahalanobis_sq = (diff ** 2) / S_i_scalar
-    
-    # Confronto con la soglia del Chi-Quadro
-    if mahalanobis_sq <= self.chi2_threshold:
-        filtered_landmarks.append(lm)
-        filtered_pixels.append(z_true)
-    else:
-        # Il dato viene ignorato e non inviato alla fase di aggiornamento dell'EKF
-        self.outliers_rejected_count += 1
+
+  # Misurazione attesa e Jacobiano
+  z_pred, H_i = ekf.measurement_model(pred_state, lm)
+
+  # Calcolo della covarianza dell'innovazione: Proiettando l'incertezza dello stato (pred_P) nello spazio dei pixel e sommiamo il rumore del sensore (ekf.R)
+  S_i = H_i @ pred_P @ H_i.T + ekf.R
+
+  # Estraiamo il valore scalare 
+  S_i_scalar = float(np.squeeze(S_i))
+
+  # CALCOLO MAHALANOBIS
+  diff = float(z_true - z_pred)
+  mahalanobis_sq = (diff ** 2) / S_i_scalar
+
+  # REJECTION
+  if mahalanobis_sq <= self.chi2_threshold:
+    filtered_landmarks.append(lm)
+    filtered_pixels.append(z_true)
+  else:
+    self.outliers_rejected_count += 1
+    print(f"[Camera Rejector] Dato Scartato! Err: {diff:.2f}px | D^2: {mahalanobis_sq:.2f} > Soglia: {self.chi2_threshold:.2f} (Incertezza S: {S_i_scalar:.4f})")
+
+return {'landmarks': filtered_landmarks, 'pixels': filtered_pixels}
 ```
 
 # Risultati e Validazione
 
-Per dimostrare l'effettiva robustezza dell'algoritmo sviluppato, la simulazione è stata testata iniettando deliberatamente degli errori artificiali (outlier) all'interno delle misurazioni dei sensori. I risultati seguenti mostrano il comportamento del sistema di rilevamento e la resilienza del Filtro di Kalman Esteso.
+Per dimostrare l'effettiva robustezza dell'algoritmo sviluppato, la simulazione è stata testata iniettando deliberatamente degli errori artificiali all'interno delle misurazioni dei sensori. I risultati seguenti mostrano il comportamento del sistema di rilevamento e la resilienza del Filtro di Kalman Esteso.
 
 ## Efficacia del filtro per la IMU
 
