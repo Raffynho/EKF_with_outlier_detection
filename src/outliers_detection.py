@@ -2,7 +2,7 @@ import numpy as np
 from scipy.stats import chi2
 
 class IMUOutlierRejector:
-    def __init__(self, window_size=50, confidence_level=0.99, dof=3):
+    def __init__(self, window_size=50, confidence_level=0.95, dof=3):
         self.window_size = window_size
         self.dof = dof
         self.chi2_threshold = chi2.ppf(confidence_level, df=self.dof)
