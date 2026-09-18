@@ -344,6 +344,9 @@ class SimulationWithEstimation():
         # Track last camera rejector count to compute per-frame rejections
         self.last_camera_rejected_count = 0
 
+        self.imu_outlier_prob = 0.01
+        self.cam_outlier_prob = 0.01
+
 
     def init_sim(self):
         # Initialize the simulation visualization
@@ -371,7 +374,7 @@ class SimulationWithEstimation():
         raw_meas = self.imu.step(self.uni.state, self.uni.u, delta_t=self.delta_t) 
 
         # Iniezione random di outliers su IMU
-        if np.random.rand() < 0.01:  
+        if np.random.rand() < self.imu_outlier_prob:
             magnitudo = np.random.uniform(15.0, 40.0)
             segno = np.random.choice([-1, 1])
             spike_magnitude = magnitudo * segno
@@ -392,7 +395,7 @@ class SimulationWithEstimation():
         # Iniezione di outlier per la Camera
         if len(camera_measurements['pixels']) > 0:
             for i in range(len(camera_measurements['pixels'])):
-                if np.random.rand() < 0.01:  
+                if np.random.rand() < self.cam_outlier_prob:
                     magnitudo_pixel = np.random.uniform(2.0, 6.0)
                     segno_pixel = np.random.choice([-1, 1])
                     spike_pixel = magnitudo_pixel * segno_pixel

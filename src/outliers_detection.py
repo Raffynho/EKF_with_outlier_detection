@@ -26,6 +26,7 @@ class IMUOutlierRejector:
         mu = np.mean(history_array, axis=0)
         
         Sigma = np.cov(history_array, rowvar=False)
+        #Sigma += np.eye(self.dof) * 1
 
         diff = z - mu
         mahalanobis_sq = diff.T @ np.linalg.inv(Sigma) @ diff
